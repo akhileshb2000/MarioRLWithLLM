@@ -22,7 +22,7 @@ env = DummyVecEnv([lambda: env])
 # 5. Stack the frames
 env = VecFrameStack(env, 4, channels_order='last')
 
-model = PPO.load('./train3/best_model_10000') # Replace with the path to the model you want to test
+model = PPO.load('./train/best_model_130000') # Replace with the path to the model you want to test
 
 # Start the game 
 state = env.reset()

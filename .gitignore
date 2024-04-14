@@ -2,3 +2,5 @@
 NesPy Mario/CartPoleTest.py
 NesPy Mario/MarioStableBaseline-P.ipynb
 NesPy Mario/MarioStableBaseline.ipynb
+/logs
+/train
