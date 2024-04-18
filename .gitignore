@@ -3,4 +3,5 @@ NesPy Mario/CartPoleTest.py
 NesPy Mario/MarioStableBaseline-P.ipynb
 NesPy Mario/MarioStableBaseline.ipynb
 /logs
-/train
+/train*
+NesPy Mario/smb_env.py
