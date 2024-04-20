@@ -1,15 +1,14 @@
 import os
+from collections import deque
 
 import gym
-from gym.wrappers import GrayScaleObservation
-from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
-from joypad_space_compatible import JoypadSpace
+from gym_utils import load_smb_env, SMB
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, SubprocVecEnv, VecTransposeImage, VecMonitor
-from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
-from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.utils import safe_mean
 
 # Baseline reward - this function determines the reward at each step by calculating Mario’s velocity (positive points while moving right, negative points while moving left, zero while standing still),
 # plus a penalty for every frame that passes to encourage movement, and a penalty if Mario dies for any reason.
@@ -128,44 +127,73 @@ class ExplorationReward(gym.Wrapper):
             reward += 1  # Adjust the reward value as needed
         return state, reward, terminated, truncated, info
 
+class TrainAndLoggingCallback(BaseCallback):
 
-def make_env(env_id: str, rank: int, seed: int = 0, render_mode: str = None):
-    def _init():
-        # 1. Create the base environment
-        env = gym.make(env_id, apply_api_compatibility=True, render_mode=render_mode)
-        # 2. Simplify the controls 
-        env = JoypadSpace(env, COMPLEX_MOVEMENT)
-        # 3. Grayscale
-        env = GrayScaleObservation(env, keep_dim=True)
-        # 4. Modify the reward function if needed
-        env = HumanReward(env)
+    def __init__(self, check_freq, save_path, starting_steps=0, verbose=1, prev_stats_dict=None):
+        super(TrainAndLoggingCallback, self).__init__(verbose)
+        self.check_freq = check_freq
+        self.save_path = save_path
+        self.starting_steps = starting_steps
 
-        env.reset(seed=seed + rank)
-        return env
-    set_random_seed(seed)
-    return _init
+        self.stats_window = 100
+
+        self.ep_score_buffer = deque(maxlen=self.stats_window)
+        if prev_stats_dict is not None:
+            # TO-DO: make this actually work for logging
+            self.ep_score_buffer.extend(prev_stats_dict['ep_score_buffer'])
+
+    def _init_callback(self):
+        if self.save_path is not None:
+            os.makedirs(self.save_path, exist_ok=True)
+
+    def _on_step(self) -> bool:
+        for i, done in enumerate(self.locals['dones']):
+            if done:
+                # print('Episode end', i)
+                self.ep_score_buffer.append(self.locals['infos'][i]['score'])
+                self.logger.record('rollout/ep_score_mean', safe_mean(self.ep_score_buffer), exclude='stdout')
+        
+        if self.n_calls % self.check_freq == 0:
+            model_path = os.path.join(self.save_path, 'best_model_{}'.format(self.n_calls + int(self.starting_steps)))
+            self.model.save(model_path)
+
+        return True
+
+    def _on_rollout_end(self) -> None:
+        # print('Rollout end')
+        # print(self.locals['infos'])
+        pass
+
+    def _on_training_end(self) -> None:
+        # TO-DO: save the additional model to a dict to be loaded later
+        pass
+
+def make_env(render_mode: str = None):
+    env = load_smb_env(render_mode=render_mode)
+    # Modify the reward function if needed
+    env = HumanReward(env)
+    return env
     
 if __name__ == '__main__':
     CHECKPOINT_DIR = './train/'
     LOG_DIR = './logs/'
-    TOTAL_TIMESTEPS = 819200
+    TOTAL_TIMESTEPS = 2000000
     NUM_CPU = 4
 
-    # 5. Create the vectorized environment
-    vec_env = SubprocVecEnv([make_env("SuperMarioBros-v0", i) for i in range(NUM_CPU)])
-    # 6. Stack the frames
-    vec_env = VecFrameStack(vec_env, 4, channels_order='last')
+    # Create the vectorized environment
+    vec_env = make_vec_env(make_env, n_envs=NUM_CPU, vec_env_cls=SubprocVecEnv)
 
+    # 8. Setup evaluation environment
+    eval_env = make_env(render_mode='human')
 
-    # 7. Setup evaluation environment
-    eval_env = DummyVecEnv([lambda: make_env("SuperMarioBros-v0", 0, render_mode="human")()])
-    eval_env = VecFrameStack(eval_env, 4, channels_order='last')
-    eval_env = VecTransposeImage(eval_env)
-    eval_callback = EvalCallback(eval_env, best_model_save_path=CHECKPOINT_DIR, log_path=LOG_DIR, eval_freq=(TOTAL_TIMESTEPS / NUM_CPU / 4), deterministic=False, render=True, verbose=1, warn=False)
+    callback = TrainAndLoggingCallback(check_freq=20000, save_path=CHECKPOINT_DIR)
 
     # Train the AI model, this is where the AI model starts to learn
-    model = PPO('CnnPolicy', vec_env, verbose=1, tensorboard_log=LOG_DIR, learning_rate=0.000001, n_steps=512, batch_size=256)
-    model.learn(total_timesteps=TOTAL_TIMESTEPS, progress_bar=True, callback=eval_callback)
+    model = PPO('MlpPolicy', vec_env, verbose=1, tensorboard_log=LOG_DIR, learning_rate=0.000001, n_steps=512, batch_size=256)
+    # model = PPO.load('MarioRL', env=vec_env)
+    model.learn(total_timesteps=TOTAL_TIMESTEPS, progress_bar=True, callback=callback, reset_num_timesteps=True)
 
     # Save the AI model
     model.save('MarioRL')
+
+    
