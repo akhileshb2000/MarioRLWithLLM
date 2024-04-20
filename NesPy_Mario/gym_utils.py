@@ -79,14 +79,13 @@ class SMBRamWrapper(gym.ObservationWrapper):
         return im_crop
     
 
-def load_smb_env(name='SuperMarioBros-1-1-v0', crop_dim=[0,16,0,13], n_stack=4, n_skip=2, render_mode=None):
+def load_smb_env(name='SuperMarioBros-1-1-v0', crop_dim=[0,16,0,13], n_stack=4, n_skip=1, render_mode=None):
     '''
     Wrapper function for loading and processing smb env
     '''
     env = gym_super_mario_bros.make(name, apply_api_compatibility=True, render_mode=render_mode)
     env = JoypadSpace(env, COMPLEX_MOVEMENT)
     env_wrap = SMBRamWrapper(env, crop_dim, n_stack=n_stack, n_skip=n_skip)
-    # env_wrap = DummyVecEnv([lambda: env_wrap])
     
     return env_wrap
 
@@ -102,7 +101,7 @@ class SMB():
     
     def play(self, episodes=5, deterministic=False, render=True, return_eval=False):
         for episode in range(1, episodes+1):
-            states = self.env.reset()
+            states, _ = self.env.reset()
             terminated, truncated = False, False
             score = 0
             
@@ -110,7 +109,7 @@ class SMB():
                 while not (terminated or truncated):
                     self.env.render()
                     action, _ = self.model.predict(states, deterministic=deterministic)
-                    states, reward, terminated, truncated, info = self.env.step(action)
+                    states, reward, terminated, truncated, info = self.env.step(int(action))
                     score += reward
                     # time.sleep(0.01)
                 print('Episode:{} Score:{}'.format(episode, score))
@@ -155,7 +154,7 @@ class SMB():
         '''
         For each step, plot obs & rendered screen in one figure for making videoes
         '''
-        state = self.env.reset()
+        state, _ = self.env.reset()
         terminated, truncated = False, False
         score = [0]
         #self._make_combined_plot2(state, score, prob_actions)
@@ -166,7 +165,7 @@ class SMB():
         #for i in range(1):
             prob_actions = self.predict_proba(state)
             action, _ = self.model.predict(state, deterministic=deterministic)
-            state, reward, terminated, truncated, info = self.env.step(action)
+            state, reward, terminated, truncated, info = self.env.step(int(action))
             score += reward
             self._make_combined_plot2(state, score, prob_actions)
             #self._make_combined_plot(state, score)

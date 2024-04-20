@@ -10,6 +10,27 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.utils import safe_mean
 
+from typing import Callable
+
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    """
+    Linear learning rate schedule.
+
+    :param initial_value: Initial learning rate.
+    :return: schedule that computes
+      current learning rate depending on remaining progress
+    """
+    def func(progress_remaining: float) -> float:
+        """
+        Progress will decrease from 1 (beginning) to 0.
+
+        :param progress_remaining:
+        :return: current learning rate
+        """
+        return progress_remaining * initial_value
+
+    return func
+
 # Baseline reward - this function determines the reward at each step by calculating Mario’s velocity (positive points while moving right, negative points while moving left, zero while standing still),
 # plus a penalty for every frame that passes to encourage movement, and a penalty if Mario dies for any reason.
 
@@ -135,9 +156,11 @@ class TrainAndLoggingCallback(BaseCallback):
         self.save_path = save_path
         self.starting_steps = starting_steps
 
-        self.stats_window = 100
+        self.stats_window = 20
 
         self.ep_score_buffer = deque(maxlen=self.stats_window)
+        # probably use linked lists for keeping track of other stats
+        # when an ep ends, the proc gets removed and all the indexes above it get shifted down
         if prev_stats_dict is not None:
             # TO-DO: make this actually work for logging
             self.ep_score_buffer.extend(prev_stats_dict['ep_score_buffer'])
@@ -180,20 +203,26 @@ if __name__ == '__main__':
     TOTAL_TIMESTEPS = 2000000
     NUM_CPU = 4
 
-    # Create the vectorized environment
-    vec_env = make_vec_env(make_env, n_envs=NUM_CPU, vec_env_cls=SubprocVecEnv)
+    # # Create the vectorized environment
+    # vec_env = make_vec_env(make_env, n_envs=NUM_CPU, vec_env_cls=SubprocVecEnv)
 
-    # 8. Setup evaluation environment
+    # # Create the callback for training and logging
+    # callback = TrainAndLoggingCallback(check_freq=20000, save_path=CHECKPOINT_DIR)
+
+    # # Train the AI model, this is where the AI model starts to learn
+    # model = PPO('MlpPolicy', vec_env, verbose=1, tensorboard_log=LOG_DIR, learning_rate=linear_schedule(3e-4))
+    # model.learn(total_timesteps=TOTAL_TIMESTEPS, progress_bar=True, callback=callback, reset_num_timesteps=True)
+
+    # # Save the AI model
+    # model.save('MarioRL')
+    # del model
+
+    # Load the AI model
+    model = PPO.load('train/best_model_240000')
     eval_env = make_env(render_mode='human')
 
-    callback = TrainAndLoggingCallback(check_freq=20000, save_path=CHECKPOINT_DIR)
-
-    # Train the AI model, this is where the AI model starts to learn
-    model = PPO('MlpPolicy', vec_env, verbose=1, tensorboard_log=LOG_DIR, learning_rate=0.000001, n_steps=512, batch_size=256)
-    # model = PPO.load('MarioRL', env=vec_env)
-    model.learn(total_timesteps=TOTAL_TIMESTEPS, progress_bar=True, callback=callback, reset_num_timesteps=True)
-
-    # Save the AI model
-    model.save('MarioRL')
+    # Create the SMB wrapper
+    smb = SMB(eval_env, model)
+    smb.evaluate(episodes=5)
 
     
