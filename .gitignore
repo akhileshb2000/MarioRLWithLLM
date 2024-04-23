@@ -1,6 +1,6 @@
 
+/checkpoints
 /logs
-/train*
+/train
 NesPy_Mario/smb_env.py
 NesPy_Mario/__pycache__
-/checkpoints*
