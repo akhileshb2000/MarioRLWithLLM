@@ -27,7 +27,7 @@ import imageio
 
 
 class SMBRamWrapper(gym.ObservationWrapper):
-    def __init__(self, env, crop_dim=[0, 16, 0, 13], n_stack=4, n_skip=1):
+    def __init__(self, env, crop_dim=[0, 16, 0, 13], n_stack=4, n_skip=4):
         '''
         crop_dim: [x0, x1, y0, y1]
         obs shape = (height, width, n_stack), n_stack=0 is the most recent frame
@@ -79,7 +79,7 @@ class SMBRamWrapper(gym.ObservationWrapper):
         return im_crop
     
 
-def load_smb_env(name='SuperMarioBros-1-1-v0', crop_dim=[0,16,0,13], n_stack=4, n_skip=1, render_mode=None):
+def load_smb_env(name='SuperMarioBros-1-1-v0', crop_dim=[0,16,0,13], n_stack=4, n_skip=4, render_mode=None):
     '''
     Wrapper function for loading and processing smb env
     '''
@@ -97,7 +97,6 @@ class SMB():
     def __init__(self, env, model):
         self.env = env
         self.model = model
-        print(env)
     
     def play(self, episodes=5, deterministic=False, render=True, return_eval=False):
         for episode in range(1, episodes+1):
@@ -141,7 +140,7 @@ class SMB():
         https://stackoverflow.com/questions/66428307/how-to-get-action-propability-in-stable-baselines-3/70012691#70012691?newreg=bd5479b970664069b359903e0151b4a1
         '''
         model = self.model
-        obs = obs_as_tensor(state, model.policy.device)
+        obs = model.policy.obs_to_tensor(state)[0]
         dis = model.policy.get_distribution(obs)
         probs = dis.distribution.probs
         probs_np = probs.detach().numpy()
@@ -154,6 +153,8 @@ class SMB():
         '''
         For each step, plot obs & rendered screen in one figure for making videoes
         '''
+        plt.ion()
+        plt.show()
         state, _ = self.env.reset()
         terminated, truncated = False, False
         score = [0]
@@ -163,12 +164,14 @@ class SMB():
         
         while not (terminated or truncated):
         #for i in range(1):
+            print('score:', score[0])
             prob_actions = self.predict_proba(state)
             action, _ = self.model.predict(state, deterministic=deterministic)
             state, reward, terminated, truncated, info = self.env.step(int(action))
-            score += reward
+            score[0] += reward
             self._make_combined_plot2(state, score, prob_actions)
             #self._make_combined_plot(state, score)
+        # print(terminated, truncated)
  
     
     def _make_combined_plot2(self, state, score, prob_actions):
@@ -176,7 +179,10 @@ class SMB():
         Originally made for n_stack = 4 & n_skip = 4, SIMPLE_MOVEMENT
         '''
         # get rendered screen
-        im_render = self.env.render(mode="rgb_array")
+        # print(self.env)
+        # print(self.env.unwrapped.env)
+        im_render = self.env.unwrapped.env.render(mode="rgb_array")
+        # print(im_render.shape)
         
         n_stack = state.shape[-1]
         cmap = colors.ListedColormap(['red', 'skyblue', 'brown', 'blue'])
@@ -186,19 +192,19 @@ class SMB():
         #obs_loc = [[0, 1], [0, 2], [1, 1], [1, 2]]
         obs_loc = [[0, 1], [1, 1], [2, 1], [3, 1]]
         obs_text = ['t (current frame)', 't-4', 't-8', 't-12']
-        action_list = ['NOOP', 'right', 'right+A', 'right+B', 'right+A+B', 'A', 'left']
+        action_list = ['NOOP', 'right', 'right+A', 'right+B', 'right+A+B', 'A', 'left', 'left+A', 'left+B', 'left+A+B', 'down', 'up']
         
         
         ##########
-        fig = plt.figure(dpi=100, figsize=(6, 6), constrained_layout=False, tight_layout=True)
+        fig = plt.figure(dpi=100, figsize=(6, 6), layout='tight')
         gs = fig.add_gridspec(4, 2, width_ratios=[3, 1])
         
         # individual obs frames
-        for n in range(n_stack):
-            ax = fig.add_subplot(gs[obs_loc[n][0], obs_loc[n][1]])
-            im = ax.imshow(state[0,:,:,n], cmap=cmap, norm=norm)
-            ax.set_axis_off()
-            ax.text(-0.5, 14.5, obs_text[n])
+        # for n in range(n_stack):
+        #     ax = fig.add_subplot(gs[obs_loc[n][0], obs_loc[n][1]])
+        #     im = ax.imshow(state[0,:,:,n], cmap=cmap, norm=norm)
+        #     ax.set_axis_off()
+        #     ax.text(-0.5, 14.5, obs_text[n])
         
         # prob_actions
         ax = fig.add_subplot(gs[3, 0])
@@ -212,7 +218,7 @@ class SMB():
         ax.set_axis_off()
         ax.text(0, -5, 'score: '+str(int(score[0])))
         
-        plt.show()    
+        # plt.show()
  
     
     def _make_combined_plot(self, state, score):
