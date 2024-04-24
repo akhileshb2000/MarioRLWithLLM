@@ -54,7 +54,9 @@ class CoinReward(gym.Wrapper):
         state, reward, terminated, truncated, info = self.env.step(action)
         coin_reward = info['coins'] - self._current_coins
         self._current_coins = info['coins']
-        reward += coin_reward * 5  # Adjust the coin reward scaling as needed
+        reward += coin_reward * 20
+        if terminated or truncated and self._current_coins == 0:
+            reward -= 10
         return state, reward, terminated, truncated, info
 
 # This reward function encourages the agent to stay high up on the screen, which can be beneficial for avoiding enemies and obstacles.
@@ -163,13 +165,13 @@ class TrainAndLoggingCallback(BaseCallback):
 def make_env(render_mode: str = None):
     env = load_smb_env(render_mode=render_mode)
     # Modify the reward function if needed
-    env = ExplorationReward(env)
+    env = CoinReward(env)
     return env
     
 if __name__ == '__main__':
-    CHECKPOINT_DIR = 'checkpoints/human_reward/'
+    CHECKPOINT_DIR = 'checkpoints/coin_reward_2/'
     LOG_DIR = './logs/'
-    TOTAL_TIMESTEPS = 0.5e6
+    TOTAL_TIMESTEPS = 3e6
     NUM_CPU = 5
 
     # # Create the vectorized environment
@@ -184,7 +186,7 @@ if __name__ == '__main__':
     model.learn(total_timesteps=TOTAL_TIMESTEPS, progress_bar=True, callback=callback)
 
     # # Save the AI model
-    model.save('MarioRL/Human_Reward')
+    model.save('MarioRL/Coin_Reward')
     del model
 
     # Load the AI model
